@@ -1,0 +1,1 @@
+Simple chat application written in Go that allows for easy subchat creation.
