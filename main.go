@@ -1,51 +1,75 @@
 package main
 
 import (
-	"fmt"
+	"html/template"
 	"log"
+	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
 	"github.com/sidebar-app/app"
 )
 
+var upgrader = &websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+var hub = newHub()
+
 func main() {
-	var allUsers app.AllUsers
-	var allChatrooms app.ChatroomList
+	router := chi.NewRouter()
+	fileServer := http.FileServer(http.Dir("static"))
+	router.Use(middleware.Logger)
+	router.Get("/", home)
+	router.Get("/ws", handleConnection)
+	router.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+	http.ListenAndServe(":6699", router)
+}
 
-	userIDList := allUsers.GetAllUserIDs()
-	allUsers.CreateUser("shgi24", &userIDList)
-	allUsers.CreateUser("Waffleman26", &userIDList)
-	allUsers.CreateUser("Leoguy14", &userIDList)
-	user1, err := allUsers.GetUserByID(allUsers.Users[0].ID)
+func handleConnection(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Fatal("Error: ", err)
+		log.Println("Error upgrading to websocket: ", err)
 	}
-	user2, err := allUsers.GetUserByID(allUsers.Users[1].ID)
+	greeting := []byte("Hello from the sidebar server")
+	err = conn.WriteMessage(websocket.TextMessage, greeting)
 	if err != nil {
-		log.Fatal("Error: ", err)
+		log.Println("Could not send greeting: ", err)
 	}
-	user3, err := allUsers.GetUserByID(allUsers.Users[2].ID)
-	if err != nil {
-		log.Fatal("Error: ", err)
+	defer conn.Close()
+	hub.Conns[conn] = true
+	for {
+		messageType, p, err := conn.ReadMessage()
+		if err != nil {
+			log.Println("Error reading message: ", err)
+			break
+		}
+		log.Println(messageType, string(p))
 	}
-	allMembers := []*app.User{user1, user2, user3}
-	user1.HostNewChatroom(allMembers, &allChatrooms)
-	chatroom1 := &allChatrooms.Chatrooms[0]
-	chatroomOneID := chatroom1.ID
-	user2.SendMessage("Hello, friends!", chatroomOneID, &allChatrooms)
-	user3.SendMessage("AHHHHHHWOOAHHAA!", chatroomOneID, &allChatrooms)
-	user1.SendMessage("Do either of you know why birds fly gladly in a V?", chatroomOneID, &allChatrooms)
-	user2.HostSubChatroom(chatroomOneID, []*app.User{user2, user3}, &allChatrooms)
-	chatroom2 := &allChatrooms.Chatrooms[1]
-	user2.SendMessage("Your dad is crazy, Leoguy...", chatroom2.ID, &allChatrooms)
-	user3.SendMessage("AHHGAAA", chatroom2.ID, &allChatrooms)
+}
 
-	fmt.Printf("All allUsers: %v\n", allUsers)
-	fmt.Println("\nchatroom1 messages:")
-	for _, message := range chatroom1.Messages {
-		fmt.Println(message)
+type Hub struct {
+	Conns     map[*websocket.Conn]bool
+	Chatrooms map[*app.Chatroom]bool
+}
+
+func newHub() *Hub {
+	return &Hub{
+		Conns:     make(map[*websocket.Conn]bool),
+		Chatrooms: make(map[*app.Chatroom]bool),
 	}
-	fmt.Println("\nchatroom2 messages:")
-	for _, message := range chatroom2.Messages {
-		fmt.Println(message)
+}
+
+func home(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/index.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := "OK"
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
