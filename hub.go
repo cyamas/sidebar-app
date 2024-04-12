@@ -8,8 +8,6 @@ import (
 	"github.com/sidebar-app/app"
 )
 
-var hub = newHub()
-
 type Hub struct {
 	Conns     map[*websocket.Conn]bool
 	Chatrooms map[int]*app.Chatroom
