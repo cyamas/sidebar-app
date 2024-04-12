@@ -5,25 +5,24 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/sidebar-app/app"
 )
 
 type Hub struct {
 	Conns     map[*websocket.Conn]bool
-	Chatrooms map[int]*app.Chatroom
-	Users     map[int]*app.User
+	Chatrooms map[int]*Chatroom
+	Users     map[int]*User
 }
 
 func newHub() *Hub {
 	return &Hub{
 		Conns:     make(map[*websocket.Conn]bool),
-		Chatrooms: make(map[int]*app.Chatroom),
-		Users:     make(map[int]*app.User),
+		Chatrooms: make(map[int]*Chatroom),
+		Users:     make(map[int]*User),
 	}
 }
 
-func (hub *Hub) createUser(name string) *app.User {
-	var user app.User
+func (hub *Hub) createUser(name string) *User {
+	var user User
 	allUserIDs := hub.getAllUserIDs()
 	user.ID = generateUniqueID(allUserIDs)
 	user.Name = name
@@ -47,9 +46,9 @@ func (hub *Hub) getAllUsernames() map[string]bool {
 	return usernames
 }
 
-func (hub *Hub) createChatroom(hostID int, memberIDs []int) *app.Chatroom {
+func (hub *Hub) createChatroom(hostID int, memberIDs []int) *Chatroom {
 	allChatroomIDs := hub.getAllChatroomIDs()
-	var chatroom app.Chatroom
+	var chatroom Chatroom
 	chatroom.ID = generateUniqueID(allChatroomIDs)
 	members := addMembersByID(hub.Users, memberIDs, chatroom.ID)
 	chatroom.Host = hub.Users[hostID]
@@ -58,8 +57,8 @@ func (hub *Hub) createChatroom(hostID int, memberIDs []int) *app.Chatroom {
 	return &chatroom
 }
 
-func addMembersByID(allUsers map[int]*app.User, userIDs []int, chatroomID int) []*app.User {
-	var members []*app.User
+func addMembersByID(allUsers map[int]*User, userIDs []int, chatroomID int) []*User {
+	var members []*User
 	for _, id := range userIDs {
 		allUsers[id].ChatroomIDs = append(allUsers[id].ChatroomIDs, chatroomID)
 		members = append(members, allUsers[id])

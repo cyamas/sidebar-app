@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -24,4 +25,27 @@ func main() {
 	router.Get("/ws", handleWS)
 	router.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 	http.ListenAndServe(":6699", router)
+}
+
+type User struct {
+	ID          int
+	WSConn      *websocket.Conn
+	Name        string
+	ChatroomIDs []int
+}
+
+type Chatroom struct {
+	ID       int
+	Host     *User
+	Name     string
+	Members  []*User
+	Messages []Message
+	Parent   *Chatroom
+	Children []*Chatroom
+}
+
+type Message struct {
+	SenderID  int
+	Text      string
+	Timestamp time.Time
 }

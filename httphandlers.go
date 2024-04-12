@@ -4,8 +4,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-
-	"github.com/sidebar-app/app"
 )
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +24,7 @@ func signinUser(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing form from post request", err)
 	}
 	username := r.Form["username"][0]
-	var newUser *app.User
+	var newUser *User
 	allUsernames := hub.getAllUsernames()
 	_, ok := allUsernames[username]
 	if !ok {

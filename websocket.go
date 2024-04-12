@@ -19,34 +19,28 @@ type WSMessage struct {
 }
 
 func handleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("Error upgrading to websocket: ", err)
-	}
-	conn.WriteMessage(websocket.TextMessage, []byte("connected"))
+	conn := connectWS(w, r)
 	defer conn.Close()
 	hub.Conns[conn] = true
+	conn.WriteMessage(websocket.TextMessage, []byte("connected"))
+
 	for {
 		wsMessage, err := readAndUnmarshalMessage(conn)
 		if err != nil {
 			log.Println("Error reading or unmarshaling ws message: ", err)
 			break
 		}
-
-		if wsMessage.MsgType == "text" {
-			broadcastTextMessage(&wsMessage)
-		}
-		if wsMessage.MsgType == "connected" {
-			user := hub.Users[wsMessage.UserID]
-			user.WSConn = conn
-			log.Println("User has connected")
-		}
-		if wsMessage.MsgType == "createroom" {
-			createNewChatroom(&wsMessage, conn)
-			host := hub.Users[wsMessage.UserID].Name
-			log.Printf("%v has created a room!", host)
-		}
+		handleWSMessage(&wsMessage, conn)
 	}
+}
+
+func connectWS(w http.ResponseWriter, r *http.Request) *websocket.Conn {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("Error upgrading to websocket: ", err)
+	}
+	hub.Conns[conn] = true
+	return conn
 }
 
 func readAndUnmarshalMessage(conn *websocket.Conn) (WSMessage, error) {
@@ -61,6 +55,25 @@ func readAndUnmarshalMessage(conn *websocket.Conn) (WSMessage, error) {
 		return wsMessage, err
 	}
 	return wsMessage, nil
+}
+
+func handleWSMessage(wsMessage *WSMessage, conn *websocket.Conn) {
+
+	switch wsMessage.MsgType {
+	case "connected":
+		addConnToUser(wsMessage, conn)
+
+	case "text":
+		broadcastTextMessage(wsMessage)
+
+	case "createroom":
+		createNewChatroom(wsMessage, conn)
+	}
+}
+
+func addConnToUser(wsMessage *WSMessage, conn *websocket.Conn) {
+	user := hub.Users[wsMessage.UserID]
+	user.WSConn = conn
 }
 
 func broadcastTextMessage(wsMessage *WSMessage) {
