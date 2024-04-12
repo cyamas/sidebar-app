@@ -1,7 +1,30 @@
-let socket = new WebSocket("ws://" + document.location.host + "/ws")
+var socket;
 
-socket.onmessage = (event) => {
-    console.log(event.data)
+function upgradeToWS() {
+    socket = new WebSocket("ws://" + document.location.host + "/ws")
+
+    socket.addEventListener('message', function(event) {
+        if (event.data === "connected") {
+            userID = document.getElementById("user-id").value
+            data = {
+                "msg-type": "connected",
+                "user-id": parseInt(userID)
+            }
+            socket.send(JSON.stringify(data))
+        }
+    })
+}
+
+document.addEventListener('htmx:afterRequest', upgradeToWS)
+
+function createRoom() {
+    userID = document.getElementById('user-id').value
+    data = {
+        "msg-type": "createroom",
+        "user-id": parseInt(userID)
+    }
+    socket.send(JSON.stringify(data))
+    console.log(data)
 }
 
 function sendMessage(event) {
@@ -15,21 +38,10 @@ function sendMessage(event) {
             msg = createMessageForSocket(roomID, userID, text)
             socket.send(msg)
             
-            addMessageToFeed(text, roomID)
             messageInput.value = ""
+            addMessageToFeed(text, roomID)
         }
     }
-}
-
-function createMessageForSocket(roomID, userID, message) {
-    data = {
-        "type": "message",
-        "room-id": roomID,
-        "user-id": userID,
-        "message": message,
-        "timestamp": new Date()
-    }
-    return JSON.stringify(data)
 }
 
 function addMessageToFeed(message, roomID) {
@@ -38,4 +50,15 @@ function addMessageToFeed(message, roomID) {
     newMessage.id = "my-message"
     newMessage.innerHTML = message
     feed.append(newMessage)
+}
+
+function createMessageForSocket(roomID, userID, message) {
+    data = {
+        "msg-type": "text",
+        "room-id": roomID,
+        "user-id": userID,
+        "message": message,
+        "timestamp": new Date()
+    }
+    return JSON.stringify(data)
 }
