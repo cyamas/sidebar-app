@@ -4,33 +4,30 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-type WSMessage struct {
-	MsgType   string    `json:"msg-type"`
-	RoomID    int       `json:"room-id"`
-	UserID    int       `json:"user-id"`
-	MemberIDs []int     `json:"member-ids"`
-	Msg       []byte    `json:"message"`
-	Received  time.Time `json:"timestamp"`
+type ClientMessage struct {
+	MsgType   string `json:"msg-type"`
+	RoomID    int    `json:"room-id"`
+	UserID    int    `json:"user-id"`
+	MemberIDs []int  `json:"member-ids"`
+	Msg       string `json:"message"`
 }
 
 func handleWS(w http.ResponseWriter, r *http.Request) {
 	conn := connectWS(w, r)
 	defer conn.Close()
 	hub.Conns[conn] = true
-	conn.WriteMessage(websocket.TextMessage, []byte("connected"))
-
+	confirmConnection(conn)
 	for {
-		wsMessage, err := readAndUnmarshalMessage(conn)
+		clientMsg, err := readAndUnmarshalMessage(conn)
 		if err != nil {
 			log.Println("Error reading or unmarshaling ws message: ", err)
 			break
 		}
-		handleWSMessage(&wsMessage, conn)
+		handleClientMessage(&clientMsg, conn)
 	}
 }
 
@@ -43,45 +40,54 @@ func connectWS(w http.ResponseWriter, r *http.Request) *websocket.Conn {
 	return conn
 }
 
-func readAndUnmarshalMessage(conn *websocket.Conn) (WSMessage, error) {
-	var wsMessage WSMessage
+func confirmConnection(conn *websocket.Conn) {
+	connectedMsg := map[string]string{"MsgType": "connected"}
+	marshaledMsg, err := json.Marshal(connectedMsg)
+	if err != nil {
+		log.Println("Error marshaling connectedMsg to json: ", err)
+	}
+	conn.WriteMessage(websocket.TextMessage, marshaledMsg)
+}
+
+func readAndUnmarshalMessage(conn *websocket.Conn) (ClientMessage, error) {
+	var clientMsg ClientMessage
 	_, wsMsg, err := conn.ReadMessage()
 	if err != nil {
 		log.Println("Error reading message: ", err)
-		return wsMessage, err
+		return clientMsg, err
 	}
-	if err := json.Unmarshal(wsMsg, &wsMessage); err != nil {
+	if err := json.Unmarshal(wsMsg, &clientMsg); err != nil {
 		log.Println("Could not unmarshal data: ", err)
-		return wsMessage, err
+		return clientMsg, err
 	}
-	return wsMessage, nil
+	return clientMsg, nil
 }
 
-func handleWSMessage(wsMessage *WSMessage, conn *websocket.Conn) {
+func handleClientMessage(clientMsg *ClientMessage, conn *websocket.Conn) {
 
-	switch wsMessage.MsgType {
+	switch clientMsg.MsgType {
 	case "connected":
-		addConnToUser(wsMessage, conn)
+		addConnToUser(clientMsg, conn)
 
 	case "text":
-		broadcastTextMessage(wsMessage)
+		broadcastTextMessage(clientMsg)
 
 	case "createroom":
-		createNewChatroom(wsMessage, conn)
+		createNewChatroom(clientMsg, conn)
 	}
 }
 
-func addConnToUser(wsMessage *WSMessage, conn *websocket.Conn) {
-	user := hub.Users[wsMessage.UserID]
+func addConnToUser(clientMsg *ClientMessage, conn *websocket.Conn) {
+	user := hub.Users[clientMsg.UserID]
 	user.WSConn = conn
 }
 
-func broadcastTextMessage(wsMessage *WSMessage) {
-	room := hub.Chatrooms[wsMessage.RoomID]
+func broadcastTextMessage(clientMsg *ClientMessage) {
+	room := hub.Chatrooms[clientMsg.RoomID]
 	for _, user := range room.Members {
-		if user.ID != wsMessage.UserID {
+		if user.ID != clientMsg.UserID {
 			conn := user.WSConn
-			err := conn.WriteMessage(websocket.TextMessage, wsMessage.Msg)
+			err := conn.WriteMessage(websocket.TextMessage, []byte(clientMsg.Msg))
 			if err != nil {
 				log.Println("Error writing message to websocket: ", err)
 				return
@@ -90,14 +96,38 @@ func broadcastTextMessage(wsMessage *WSMessage) {
 	}
 }
 
-func createNewChatroom(wsMessage *WSMessage, conn *websocket.Conn) {
-	newChatroom := hub.createChatroom(wsMessage.UserID, wsMessage.MemberIDs)
-	data := make(map[string]int)
-	data["roomID"] = newChatroom.ID
-	jsonBytes, err := json.Marshal(data)
+func createNewChatroom(clientMsg *ClientMessage, conn *websocket.Conn) {
+	chatroom := hub.createChatroom(clientMsg.UserID, clientMsg.MemberIDs)
+	newRoomMsg := createNewChatroomWSMessage(chatroom)
+	marshaledNewRoomMsg, err := json.Marshal(newRoomMsg)
 	if err != nil {
 		log.Println("Could not marshal data", err)
 		return
 	}
-	conn.WriteMessage(websocket.TextMessage, jsonBytes)
+	conn.WriteMessage(websocket.TextMessage, marshaledNewRoomMsg)
+}
+
+type WSNewChatroom struct {
+	MsgType  string
+	RoomID   int
+	HostID   int
+	HostName string
+	Members  []map[int]string
+}
+
+func createNewChatroomWSMessage(chatroom *Chatroom) *WSNewChatroom {
+	var newRoomMsg = WSNewChatroom{
+		MsgType:  "newroom",
+		HostID:   chatroom.Host.ID,
+		HostName: chatroom.Host.Name,
+	}
+	newRoomMsg.RoomID = chatroom.ID
+	var members []map[int]string
+	for _, user := range chatroom.Members {
+		member := make(map[int]string)
+		member[user.ID] = user.Name
+		members = append(members, member)
+	}
+	newRoomMsg.Members = members
+	return &newRoomMsg
 }

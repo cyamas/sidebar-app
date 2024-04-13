@@ -4,15 +4,23 @@ function upgradeToWS() {
     socket = new WebSocket("ws://" + document.location.host + "/ws")
 
     socket.addEventListener('message', function(event) {
-        if (event.data === "connected") {
+        data = JSON.parse(event.data)
+        if (data["MsgType"] === "connected") {
             userID = document.getElementById("user-id").value
-            data = {
+            msg = {
                 "msg-type": "connected",
                 "user-id": parseInt(userID)
             }
-            socket.send(JSON.stringify(data))
+            socket.send(JSON.stringify(msg))
+        }
+        if (data["MsgType"] === "newroom") {
+            var msg = data["HostName"] + " has created a new chatroom."
+           var initialChatMsg = createMessageForSocket(data["RoomID"], data["HostID"], msg)
+           console.log(initialChatMsg)
+           socket.send(initialChatMsg)
         }
     })
+
 }
 
 document.addEventListener('htmx:afterRequest', upgradeToWS)
@@ -24,7 +32,6 @@ function createRoom() {
         "user-id": parseInt(userID)
     }
     socket.send(JSON.stringify(data))
-    console.log(data)
 }
 
 function sendMessage(event) {
@@ -58,7 +65,6 @@ function createMessageForSocket(roomID, userID, message) {
         "room-id": roomID,
         "user-id": userID,
         "message": message,
-        "timestamp": new Date()
     }
     return JSON.stringify(data)
 }

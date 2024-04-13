@@ -9,24 +9,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var hub = newHub()
-
-var upgrader = &websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
-func main() {
-	router := chi.NewRouter()
-	fileServer := http.FileServer(http.Dir("static"))
-	router.Use(middleware.Logger)
-	router.Get("/", home)
-	router.Post("/signin", signinUser)
-	router.Get("/ws", handleWS)
-	router.Handle("/static/*", http.StripPrefix("/static/", fileServer))
-	http.ListenAndServe(":6699", router)
-}
-
 type User struct {
 	ID          int
 	WSConn      *websocket.Conn
@@ -48,4 +30,22 @@ type Message struct {
 	SenderID  int
 	Text      string
 	Timestamp time.Time
+}
+
+var hub = newHub()
+
+var upgrader = &websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+func main() {
+	router := chi.NewRouter()
+	fileServer := http.FileServer(http.Dir("static"))
+	router.Use(middleware.Logger)
+	router.Get("/", home)
+	router.Post("/signin", signinUser)
+	router.Get("/ws", handleWS)
+	router.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+	http.ListenAndServe(":6699", router)
 }
