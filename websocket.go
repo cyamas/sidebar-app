@@ -21,6 +21,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	hub.Conns[conn] = true
 	confirmConnection(conn)
+
 	for {
 		clientMsg, err := readAndUnmarshalMessage(conn)
 		if err != nil {
@@ -41,25 +42,27 @@ func connectWS(w http.ResponseWriter, r *http.Request) *websocket.Conn {
 }
 
 func confirmConnection(conn *websocket.Conn) {
-	connectedMsg := map[string]string{"MsgType": "connected"}
-	marshaledMsg, err := json.Marshal(connectedMsg)
+	confirmMsg := map[string]string{"MsgType": "connected"}
+	marshaledMsg, err := json.Marshal(confirmMsg)
 	if err != nil {
-		log.Println("Error marshaling connectedMsg to json: ", err)
+		log.Println("error marshaling map to json", err)
 	}
 	conn.WriteMessage(websocket.TextMessage, marshaledMsg)
+	log.Println("Confirming connection...")
 }
 
 func readAndUnmarshalMessage(conn *websocket.Conn) (ClientMessage, error) {
 	var clientMsg ClientMessage
 	_, wsMsg, err := conn.ReadMessage()
 	if err != nil {
-		log.Println("Error reading message: ", err)
+		log.Fatalln("Error reading message: ", err)
 		return clientMsg, err
 	}
 	if err := json.Unmarshal(wsMsg, &clientMsg); err != nil {
 		log.Println("Could not unmarshal data: ", err)
 		return clientMsg, err
 	}
+	log.Println("client msg: ", clientMsg)
 	return clientMsg, nil
 }
 
@@ -68,12 +71,17 @@ func handleClientMessage(clientMsg *ClientMessage, conn *websocket.Conn) {
 	switch clientMsg.MsgType {
 	case "connected":
 		addConnToUser(clientMsg, conn)
+		log.Println("Connection confirmed. Info added to corresponding user")
 
 	case "text":
 		broadcastTextMessage(clientMsg)
+		log.Println(clientMsg.Msg)
 
 	case "createroom":
 		createNewChatroom(clientMsg, conn)
+
+	case "activeusers":
+		getActiveUsers(conn)
 	}
 }
 
@@ -82,12 +90,32 @@ func addConnToUser(clientMsg *ClientMessage, conn *websocket.Conn) {
 	user.WSConn = conn
 }
 
+type TextMessage struct {
+	MsgType    string
+	Msg        string
+	SenderID   int
+	SenderName string
+	RoomID     int
+}
+
 func broadcastTextMessage(clientMsg *ClientMessage) {
-	room := hub.Chatrooms[clientMsg.RoomID]
+	msg := TextMessage{
+		MsgType:    "text",
+		Msg:        clientMsg.Msg,
+		SenderID:   clientMsg.UserID,
+		SenderName: hub.getUsernameByID(clientMsg.UserID),
+		RoomID:     clientMsg.RoomID,
+	}
+	marshaledMsg, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("could not marshal TextMessage for broadcast: ", err)
+	}
+	room := hub.Chatrooms[msg.RoomID]
 	for _, user := range room.Members {
-		if user.ID != clientMsg.UserID {
+		log.Println("Member: ", user.Name)
+		if user.ID != msg.SenderID {
 			conn := user.WSConn
-			err := conn.WriteMessage(websocket.TextMessage, []byte(clientMsg.Msg))
+			err := conn.WriteMessage(websocket.TextMessage, []byte(marshaledMsg))
 			if err != nil {
 				log.Println("Error writing message to websocket: ", err)
 				return
@@ -97,6 +125,7 @@ func broadcastTextMessage(clientMsg *ClientMessage) {
 }
 
 func createNewChatroom(clientMsg *ClientMessage, conn *websocket.Conn) {
+
 	chatroom := hub.createChatroom(clientMsg.UserID, clientMsg.MemberIDs)
 	newRoomMsg := createNewChatroomWSMessage(chatroom)
 	marshaledNewRoomMsg, err := json.Marshal(newRoomMsg)
@@ -130,4 +159,23 @@ func createNewChatroomWSMessage(chatroom *Chatroom) *WSNewChatroom {
 	}
 	newRoomMsg.Members = members
 	return &newRoomMsg
+}
+
+func getActiveUsers(conn *websocket.Conn) {
+	allUsers := make(map[int]string)
+	for id, user := range hub.Users {
+		allUsers[id] = user.Name
+	}
+	msg := struct {
+		MsgType string
+		Users   map[int]string
+	}{
+		MsgType: "allusers",
+		Users:   allUsers,
+	}
+	marshaledMsg, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("error marshaling data", err)
+	}
+	conn.WriteMessage(websocket.TextMessage, marshaledMsg)
 }

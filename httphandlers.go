@@ -24,6 +24,7 @@ func signinUser(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing form from post request", err)
 	}
 	username := r.Form["username"][0]
+	log.Println(username)
 	var newUser *User
 	allUsernames := hub.getAllUsernames()
 	_, ok := allUsernames[username]
@@ -31,10 +32,10 @@ func signinUser(w http.ResponseWriter, r *http.Request) {
 		newUser = hub.createUser(username)
 	}
 
-	tmpl, err := template.ParseFiles("templates/user.html")
+	tmpl, err := template.ParseFiles("templates/create-room-btn.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Println("error parsing templates/user.html")
+		log.Println("error parsing templates/create-room-btn.html")
 		return
 	}
 	if err := tmpl.Execute(w, newUser.ID); err != nil {

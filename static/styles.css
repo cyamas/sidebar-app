@@ -50,5 +50,9 @@ h1 {
     color: white;
     background-color: rgb(170, 70, 238);
     border-radius: 8px;
+}
 
-}                                                                                                                                                                      
+#select-users-form {
+    display: none;
+    flex-direction: column;
+}

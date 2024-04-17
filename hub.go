@@ -30,6 +30,10 @@ func (hub *Hub) createUser(name string) *User {
 	return &user
 }
 
+func (hub *Hub) getUsernameByID(id int) string {
+	return hub.Users[id].Name
+}
+
 func (hub *Hub) getAllUserIDs() map[int]bool {
 	userIDs := make(map[int]bool)
 	for id := range hub.Users {
