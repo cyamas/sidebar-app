@@ -8,14 +8,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type ClientMessage struct {
-	MsgType   string `json:"msg-type"`
-	RoomID    int    `json:"room-id"`
-	UserID    int    `json:"user-id"`
-	MemberIDs []int  `json:"member-ids"`
-	Msg       string `json:"message"`
-}
-
 func handleWS(w http.ResponseWriter, r *http.Request) {
 	conn := connectWS(w, r)
 	defer conn.Close()
@@ -90,32 +82,26 @@ func addConnToUser(clientMsg *ClientMessage, conn *websocket.Conn) {
 	user.WSConn = conn
 }
 
-type TextMessage struct {
-	MsgType    string
-	Msg        string
-	SenderID   int
-	SenderName string
-	RoomID     int
-}
-
 func broadcastTextMessage(clientMsg *ClientMessage) {
 	msg := TextMessage{
-		MsgType:    "text",
-		Msg:        clientMsg.Msg,
-		SenderID:   clientMsg.UserID,
-		SenderName: hub.getUsernameByID(clientMsg.UserID),
-		RoomID:     clientMsg.RoomID,
+		MsgType:  "text",
+		Msg:      clientMsg.Msg,
+		SenderID: clientMsg.UserID,
+		RoomID:   clientMsg.RoomID,
 	}
+	user, err := hub.getUserByID(clientMsg.UserID)
+	if err != nil {
+		log.Println("User not found for given id.")
+	}
+	msg.SenderName = user.Name
 	marshaledMsg, err := json.Marshal(msg)
 	if err != nil {
 		log.Println("could not marshal TextMessage for broadcast: ", err)
 	}
 	room := hub.Chatrooms[msg.RoomID]
 	for _, user := range room.Members {
-		log.Println("Member: ", user.Name)
 		if user.ID != msg.SenderID {
-			conn := user.WSConn
-			err := conn.WriteMessage(websocket.TextMessage, []byte(marshaledMsg))
+			err := user.WSConn.WriteMessage(websocket.TextMessage, []byte(marshaledMsg))
 			if err != nil {
 				log.Println("Error writing message to websocket: ", err)
 				return
@@ -125,7 +111,6 @@ func broadcastTextMessage(clientMsg *ClientMessage) {
 }
 
 func createNewChatroom(clientMsg *ClientMessage, conn *websocket.Conn) {
-
 	chatroom := hub.createChatroom(clientMsg.UserID, clientMsg.MemberIDs)
 	newRoomMsg := createNewChatroomWSMessage(chatroom)
 	marshaledNewRoomMsg, err := json.Marshal(newRoomMsg)

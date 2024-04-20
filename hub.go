@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 
@@ -15,23 +16,29 @@ type Hub struct {
 
 func newHub() *Hub {
 	return &Hub{
-		Conns:     make(map[*websocket.Conn]bool),
 		Chatrooms: make(map[int]*Chatroom),
 		Users:     make(map[int]*User),
 	}
 }
 
 func (hub *Hub) createUser(name string) *User {
-	var user User
-	allUserIDs := hub.getAllUserIDs()
-	user.ID = generateUniqueID(allUserIDs)
-	user.Name = name
-	hub.Users[user.ID] = &user
+	newUserID := generateUniqueID(hub.getAllUserIDs())
+	user := User{
+		ID:   newUserID,
+		Name: name,
+		Hub:  hub,
+		Send: make(chan ClientMessage),
+	}
+	hub.Users[newUserID] = &user
 	return &user
 }
 
-func (hub *Hub) getUsernameByID(id int) string {
-	return hub.Users[id].Name
+func (hub *Hub) getUserByID(id int) (*User, error) {
+	if user, ok := hub.Users[id]; ok {
+		return user, nil
+	}
+	err := errors.New("no user associated with id")
+	return nil, err
 }
 
 func (hub *Hub) getAllUserIDs() map[int]bool {
@@ -51,14 +58,28 @@ func (hub *Hub) getAllUsernames() map[string]bool {
 }
 
 func (hub *Hub) createChatroom(hostID int, memberIDs []int) *Chatroom {
-	allChatroomIDs := hub.getAllChatroomIDs()
-	var chatroom Chatroom
-	chatroom.ID = generateUniqueID(allChatroomIDs)
+	newRoomID := generateUniqueID(hub.getAllChatroomIDs())
+	chatroom := Chatroom{
+		ID:        newRoomID,
+		Host:      hub.Users[hostID],
+		Members:   addMembersByID(hub.Users, memberIDs, newRoomID),
+		Broadcast: make(chan ClientMessage),
+	}
+
 	members := addMembersByID(hub.Users, memberIDs, chatroom.ID)
-	chatroom.Host = hub.Users[hostID]
 	chatroom.Members = append(chatroom.Members, members...)
+
 	hub.Chatrooms[chatroom.ID] = &chatroom
 	return &chatroom
+}
+
+func (hub *Hub) getChatroomByID(id int) (*Chatroom, error) {
+	room, ok := hub.Chatrooms[id]
+	if ok {
+		return room, nil
+	}
+	err := errors.New("could not find chatroom with given id")
+	return nil, err
 }
 
 func addMembersByID(allUsers map[int]*User, userIDs []int, chatroomID int) []*User {
